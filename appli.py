@@ -17,13 +17,21 @@ class AdvancedChat():
 		s.bind((host,port))
 		self.__s = s
 		print('Utilisateur {} : Port {}'.format(host, port))
-		
+		mySuperListOfTuples = socket.getaddrinfo(host, port)
+		for superTuple in mySuperListOfTuples:
+			if superTuple[0] is socket.AF_INET:
+				ipAddress = superTuple[4][0]
+				break
+		self.__name=socket.gethostname()
+		self.__ipAddress=ipAddress
+		self.__port=port
 	def run(self):
 		handlers = {
 			'/exit': self._exit,
 			'/quit': self._quit,
 			'/join': self._join,
-			'/send': self._send
+			'/send': self._send,
+			'/myInfo': self._myInfo
 		}
 		self.__running = True
 		self.__address = None
@@ -33,10 +41,10 @@ class AdvancedChat():
 			command = line[:line.index(' ')]
 			param = line[line.index(' ')+1:].rstrip()
 			if command in handlers:
-				try:
-					handlers[command]() if param == '' else handlers[command](param)
-				except:
-					print("Erreur lors de l'execution de la comande.")
+				#try:
+				handlers[command]() if param == '' else handlers[command](param)
+				#except:
+				#	print("Erreur lors de l'execution de la comande.")
 			else:
 				print('Commande inconnue:', command)
 				
@@ -55,7 +63,7 @@ class AdvancedChat():
 				self.__address = (socket.gethostbyaddr(tokens[0])[0], int(tokens[1]))
 				print('Connecte a {}:{}'.format(*self.__address))
 			except OSError:
-				print("Erreur lors de l'envoi du message.")
+				print("Erreur lors de la connexion")
 				
 	def _send(self, param):
 		if self.__address is not None:
@@ -77,7 +85,14 @@ class AdvancedChat():
 				pass
 			except OSError:
 				return
-				
+	
+	@property
+	def myInfo(self):
+		return (self.__name, self.__ipAddress, self.__port)
+			
+	def _myInfo(self):
+		print(self.myInfo)
+			
 if __name__ == '__main__':
 	if len(sys.argv) == 3:
 		AdvancedChat(sys.argv[1], int(sys.argv[2])).run()
