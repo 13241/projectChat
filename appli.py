@@ -7,7 +7,7 @@ import sys
 import threading
 
 SERVERADDRESS = (socket.gethostname(), 5000)
-
+SERVER = 1
 class EchoServerPlus():
 	def __init__(self):
 		self.__s = socket.socket()
@@ -30,25 +30,19 @@ class EchoServerPlus():
 		self.__running = True
 		self.__s.listen()
 		while self.__running:
-			print("coucou")
 			client, addr = self.__s.accept()
-			print("coucou2")
 			#if not (client.gethostname() in self.__database):
 			self._register(client)
-			print("coucou3")
+			print(str(self.__database))
 			client.close()
 			#recevoir des requetes
 			#file d'attente
 			
 	def _register(self, client):
 		try:
-			print("coucou2.5")
 			clientData = self._receive(client).decode()
-			print(clientData)
 			clientData = clientData[1:len(clientData)-1]
-			print(clientData)
 			clientData = clientData.split(', ')
-			print(clientData)
 			self.__database[clientData[0]] = (clientData[1], clientData[2])
 			print(clientData[0]+" s'est connecte au serveur")
 		except OSError:
@@ -59,33 +53,36 @@ class EchoServerPlus():
 		finished = False
 		while not finished:
 			data = client.recv(1024)
-			print(data)
+			print("sent data : "+str(data))
 			chunks.append(data)
 			finished = data == b''
-			print(finished)
 		return b''.join(chunks)
 			
 class ChatClient():
 	def __init__(self, host=socket.gethostname(), port=5001):
-		s = socket.socket()
-		#s = socket.socket(type=socket.SOCK_DGRAM)
-		s.settimeout(25)
-		s.bind((host,port))
-		self.__s = s
+		self.__name=host
+		self.__port=port
+		isAServerSocket=True
+		self.socketizer(isAServerSocket)
 		print('Utilisateur {} : Port {}'.format(host, port))
+		print(self.getInfo)
+		
+	def socketizer(self, isAServerSocket=False):
+		host = self.__name
+		port = self.__port
+		if isAServerSocket:
+			self.__s = socket.socket()
+		else:
+			self.__s = socket.socket(type=socket.SOCK_DGRAM)
+			self.__s.settimeout(1)
+		self.__s.bind((host,port))
 		addrinfoListOfTuples = socket.getaddrinfo(host, port)
 		ipAddress=''
 		for addrinfoTuple in addrinfoListOfTuples:
 			if addrinfoTuple[0] is socket.AF_INET:
 				ipAddress = addrinfoTuple[4][0]
 				break
-		print(socket.gethostname())
-		self.__name=socket.gethostname()
 		self.__ipAddress=ipAddress
-		self.__port=port
-		print(self.getInfo)
-		print(socket.gethostname())
-		print(ipAddress)
 		
 	def run(self):
 		handlers = {
@@ -112,8 +109,13 @@ class ChatClient():
 				print('Commande inconnue:', command)
 	
 	def _joinServer(self, param):
-		self._join(param)
-		self._send(str(self.getInfo))
+		try:
+			isAServer = True
+			self._join(param, isAServer)
+			self._send(str(self.getInfo), isAServer)
+			self.__s.close()
+		except BrokenPipeError:
+			print("Vous etes deja enregistre sur ce serveur")
 		
 	def _exit(self):
 		self.__running = False
@@ -123,29 +125,28 @@ class ChatClient():
 	def _quit(self):
 		self.__address = None
 		
-	def _join(self, param):
+	def _join(self, param, isAServer=False):
 		tokens = param.split(' ')
 		if len(tokens) == 2:
 			try:
 				self.__address = (socket.gethostbyname(tokens[0]), int(tokens[1]))
-				self.__s.connect(self.__address)
+				if isAServer:
+					self.__s.connect(self.__address)
 				print('Connecte a {}:{}'.format(*self.__address))
 			except OSError:
 				print("Erreur lors de la connexion")
 				
-	def _send(self, param):
-		print("send")
+	def _send(self, param, isAServer=False):
 		if self.__address is not None:
 			#try:
-			print(self.__address)
 			message = param.encode()
 			totalsent = 0
 			while totalsent < len(message):
 				sent = self.__s.send(message[totalsent:])
 				#sent = self.__s.sendto(message[totalsent:], self.__address)
 				totalsent += sent
-			print("sent")
-			self.__s.shutdown(socket.SHUT_RDWR)
+			if isAServer:
+				self.__s.shutdown(socket.SHUT_RDWR)
 			#except OSError:
 			#	print('Erreur lors de la reception du message.')
 				
@@ -171,6 +172,7 @@ if __name__ == '__main__':
 		ChatClient(sys.argv[2], int(sys.argv[3])).run()
 	elif len(sys.argv) == 2 and sys.argv[1]  == 'server':
 		EchoServerPlus().run()
-	else:
+	elif SERVER:
 		EchoServerPlus().run()
-		#ChatClient(socket.gethostname(), 5001).run()
+	else:
+		ChatClient(socket.gethostname(), 5001).run()
