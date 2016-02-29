@@ -7,7 +7,6 @@ import sys
 import threading
 
 SERVERADDRESS = (socket.gethostname(), 5000)
-SERVER = 1
 class EchoServerPlus():
 	def __init__(self):
 		self.__s = socket.socket()
@@ -40,10 +39,21 @@ class EchoServerPlus():
 			
 	def _register(self, client):
 		try:
+			added=False
 			clientData = self._receive(client).decode()
 			clientData = clientData[1:len(clientData)-1]
 			clientData = clientData.split(', ')
-			self.__database[clientData[0]] = (clientData[1], clientData[2])
+			clientData[2]=int(clientData[2])+100
+			if clientData[0] in self.__database:
+				for i in range(len(self.__database[clientData[0]])):
+					if self.__database[clientData[0]][i][1]==clientData[2]: #check port
+					#if self.__database[clientData[0]][i][0]==clientData[1]: #check ip
+						self.__database[clientData[0]][i] = (clientData[1], clientData[2])
+						added = True
+				if not added:
+					self.__database[clientData[0]].append((clientData[1], clientData[2]))
+			else:
+				self.__database[clientData[0]] = [(clientData[1], clientData[2])]
 			print(clientData[0]+" s'est connecte au serveur")
 		except OSError:
 			print("Erreur lors de la reception des donnees client")
@@ -62,6 +72,7 @@ class ChatClient():
 	def __init__(self, host=socket.gethostname(), port=5001):
 		self.__name=host
 		self.__port=port
+		self.__maxPortRange= port + 99
 		isAServerSocket=True
 		self.socketizer(isAServerSocket)
 		print('Utilisateur {} : Port {}'.format(host, port))
@@ -79,8 +90,8 @@ class ChatClient():
 			self.__s = socket.socket()
 		else:
 			self.__s = socket.socket(type=socket.SOCK_DGRAM)
-			self.__s.settimeout(1)
-		self.__s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+			self.__s.settimeout(4)
+		#self.__s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		self.__s.bind((host,port))
 		addrinfoListOfTuples = socket.getaddrinfo(host, port)
 		ipAddress=''
@@ -101,8 +112,9 @@ class ChatClient():
 		}
 		self.__running = True
 		self.__address = None
-		threading.Thread(target=self._receive).start()
+		#threading.Thread(target=self._receive).start()
 		while self.__running:
+			threading.Thread(target=self._receive).start()
 			line = sys.stdin.readline().rstrip() + ' '
 			command = line[:line.index(' ')]
 			param = line[line.index(' ')+1:].rstrip()
@@ -120,6 +132,9 @@ class ChatClient():
 			self._join(param, isAServer)
 			self._send(str(self.getInfo), isAServer)
 			self.__s.shutdown(socket.SHUT_RDWR)
+			self.__port += 100
+			print(self.getInfo)
+			self.socketizer()
 		except BrokenPipeError:
 			print("Vous etes deja enregistre sur ce serveur")
 		
@@ -141,10 +156,9 @@ class ChatClient():
 				self.__address = (socket.gethostbyname(tokens[0]), int(tokens[1]))
 				if isAServer:
 					self.__s.connect(self.__address)
-				print(self.getInfo)
 				print('Connecte a {}:{}'.format(*self.__address))
 			except OSError as err:
-				if err.errno==10048 and self.__port < 5099:
+				if err.errno==10048 and self.__port < self.__maxPortRange:
 					self.__port+=1
 					self._join(param, isAServer)
 				else:
@@ -182,11 +196,14 @@ class ChatClient():
 		print(self.getInfo)
 			
 if __name__ == '__main__':
-	if len(sys.argv) == 4 and sys.argv[1] == 'client':
-		ChatClient(sys.argv[2], int(sys.argv[3])).run()
-	elif len(sys.argv) == 2 and sys.argv[1]  == 'server':
-		EchoServerPlus().run()
-	elif SERVER:
-		EchoServerPlus().run()
-	else:
-		ChatClient(socket.gethostname(), 5001).run()
+	flag = False
+	port = 5001
+	while not flag:
+		try:
+			EchoServerPlus().run()
+		except OSError:
+			try:
+				ChatClient(port=port).run()
+				flag = True
+			except OSError:
+				port+=1
