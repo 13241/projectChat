@@ -68,6 +68,11 @@ class ChatClient():
 		print(self.getInfo)
 		
 	def socketizer(self, isAServerSocket=False):
+		try:
+			self.__s.close()
+		except AttributeError:
+			pass
+		self.__address = None
 		host = self.__name
 		port = self.__port
 		if isAServerSocket:
@@ -75,6 +80,7 @@ class ChatClient():
 		else:
 			self.__s = socket.socket(type=socket.SOCK_DGRAM)
 			self.__s.settimeout(1)
+		self.__s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		self.__s.bind((host,port))
 		addrinfoListOfTuples = socket.getaddrinfo(host, port)
 		ipAddress=''
@@ -113,7 +119,7 @@ class ChatClient():
 			isAServer = True
 			self._join(param, isAServer)
 			self._send(str(self.getInfo), isAServer)
-			self.__s.close()
+			self.__s.shutdown(socket.SHUT_RDWR)
 		except BrokenPipeError:
 			print("Vous etes deja enregistre sur ce serveur")
 		
@@ -126,15 +132,23 @@ class ChatClient():
 		self.__address = None
 		
 	def _join(self, param, isAServer=False):
+		if not isinstance(isAServer, bool):
+			isAServer = False
+		self.socketizer(isAServer)
 		tokens = param.split(' ')
 		if len(tokens) == 2:
 			try:
 				self.__address = (socket.gethostbyname(tokens[0]), int(tokens[1]))
 				if isAServer:
 					self.__s.connect(self.__address)
+				print(self.getInfo)
 				print('Connecte a {}:{}'.format(*self.__address))
-			except OSError:
-				print("Erreur lors de la connexion")
+			except OSError as err:
+				if err.errno==10048 and self.__port < 5099:
+					self.__port+=1
+					self._join(param, isAServer)
+				else:
+					print("Erreur lors de la connexion")
 				
 	def _send(self, param, isAServer=False):
 		if self.__address is not None:
@@ -142,11 +156,11 @@ class ChatClient():
 			message = param.encode()
 			totalsent = 0
 			while totalsent < len(message):
-				sent = self.__s.send(message[totalsent:])
-				#sent = self.__s.sendto(message[totalsent:], self.__address)
+				if isAServer:
+					sent = self.__s.send(message[totalsent:])
+				else:
+					sent = self.__s.sendto(message[totalsent:], self.__address)
 				totalsent += sent
-			if isAServer:
-				self.__s.shutdown(socket.SHUT_RDWR)
 			#except OSError:
 			#	print('Erreur lors de la reception du message.')
 				
