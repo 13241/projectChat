@@ -37,9 +37,11 @@ class EchoServerPlus():
 			param = line[line.index(' ')+1:].rstrip()
 			if param == '':
 				self._register(address, command)
+				print(str(self.__database))
 			else:
+				print(message+" from : "+str(address))
 				self._answer(client, address, param)
-			print(str(self.__database))
+				client.shutdown(socket.SHUT_WR)
 			client.close()
 	
 	def _register(self, address, name):
@@ -75,14 +77,14 @@ class EchoServerPlus():
 			
 	def _answer(self, client, address, request):
 		if request in self.__database:
-			answer = request + " : " + str(self.__database[request])
+			answer = request + " est connecte via : " + str(self.__database[request])
 		else:
-			answer = request + " is not connected"
+			answer = request + " n'est pas connecte"
 		try:
 			message = answer.encode()
 			totalsent = 0
 			while totalsent < len(message):
-				sent = self.__s.send(message[totalsent:])
+				sent = client.send(message[totalsent:])
 				totalsent += sent
 		except OSError:
 			print('Erreur lors de la reception du message.')
@@ -93,6 +95,7 @@ class ChatClient():
 		self.__name=host
 		self.__port=port
 		self.__maxPortRange= port + 99
+		self.__serverAddress = None
 		isAServerSocket=True
 		self.socketizer(isAServerSocket)
 		print('Utilisateur {} : Port {}'.format(host, port))
@@ -128,7 +131,8 @@ class ChatClient():
 			'/join': self._join,
 			'/send': self._send,
 			'/myInfo': self._getInfo,
-			'/joinServer': self._joinServer
+			'/joinServer': self._joinServer,
+			'/askServer' : self._askServer
 		}
 		self.__running = True
 		self.__address = None
@@ -160,13 +164,29 @@ class ChatClient():
 			print("Vous etes deja enregistre sur ce serveur")
 			traceback.print_exc(file=sys.stdout)
 		
+	def _askServer(self, param):
+		if self.__serverAddress is not None:
+			isAServer = True
+			self._join(self.__serverAddress, isAServer)
+			self._send("askFor "+param, isAServer)
+			self.__s.shutdown(socket.SHUT_WR)
+			threading.Thread(target=self._receive).start()
+			self.__s.close()
+			#self.__port+= 100
+			#print(self.getInfo)
+			#self.socketizer()
+		else:
+			print("Vous n'avez acces a aucun serveur")
+	
 	def _exit(self):
 		self.__running = False
 		self.__address = None
+		self.__serverAddress = None
 		self.__s.close()
 	
 	def _quit(self):
 		self.__address = None
+		self.__serverAddress = None
 		
 	def _join(self, param, isAServer=False):
 		if not isinstance(isAServer, bool):
@@ -178,6 +198,7 @@ class ChatClient():
 				self.__address = (socket.gethostbyname(tokens[0]), int(tokens[1]))
 				if isAServer:
 					self.__s.connect(self.__address)
+					self.__serverAddress = param
 				print('Connecte a {}:{}'.format(*self.__address))
 			except OSError as err:
 				if err.errno==10048 and self.__port < self.__maxPortRange:
