@@ -5,6 +5,7 @@
 import socket
 import sys
 import threading
+import traceback
 
 SERVERADDRESS = (socket.gethostname(), 5000)
 class EchoServerPlus():
@@ -27,47 +28,66 @@ class EchoServerPlus():
 		
 	def run(self):
 		self.__running = True
-		self.__s.listen()
+		self.__s.listen(5)
 		while self.__running:
-			client, addr = self.__s.accept()
-			#if not (client.gethostname() in self.__database):
-			self._register(client)
+			client, address = self.__s.accept()
+			message = self._receive(client).decode()
+			line = message.rstrip() + ' '
+			command = line[:line.index(' ')]
+			param = line[line.index(' ')+1:].rstrip()
+			if param == '':
+				self._register(address, command)
+			else:
+				self._answer(client, address, param)
 			print(str(self.__database))
 			client.close()
-			#recevoir des requetes
-			#file d'attente
-			
-	def _register(self, client):
+	
+	def _register(self, address, name):
 		try:
-			added=False
-			clientData = self._receive(client).decode()
-			clientData = clientData[1:len(clientData)-1]
-			clientData = clientData.split(', ')
-			clientData[2]=int(clientData[2])+100
-			if clientData[0] in self.__database:
-				for i in range(len(self.__database[clientData[0]])):
-					if self.__database[clientData[0]][i][1]==clientData[2]: #check port
-					#if self.__database[clientData[0]][i][0]==clientData[1]: #check ip
-						self.__database[clientData[0]][i] = (clientData[1], clientData[2])
+			clientName = name
+			clientIpAddress = address[0]
+			clientPort = address[1]
+			clientPort+=100
+			added = False
+			if clientName in self.__database:
+				for i in range(len(self.__database[clientName])):
+					if self.__database[clientName][i][1]==clientPort:
+					#if self.__database[clientName][i][0]==clientIpAddress:
+						self.__database[clientName][i] = (clientIpAddress, clientPort)
 						added = True
 				if not added:
-					self.__database[clientData[0]].append((clientData[1], clientData[2]))
+					self.__database[clientName].append((clientIpAddress, clientPort))
 			else:
-				self.__database[clientData[0]] = [(clientData[1], clientData[2])]
-			print(clientData[0]+" s'est connecte au serveur")
+				self.__database[clientName] = [(clientIpAddress, clientPort)]
+			print(clientName+" s'est connecte au serveur")
 		except OSError:
 			print("Erreur lors de la reception des donnees client")
+			traceback.print_exc(file=sys.stdout)
 			
 	def _receive(self, client):
 		chunks = []
 		finished = False
 		while not finished:
 			data = client.recv(1024)
-			print("sent data : "+str(data))
 			chunks.append(data)
 			finished = data == b''
 		return b''.join(chunks)
 			
+	def _answer(self, client, address, request):
+		if request in self.__database:
+			answer = request + " : " + str(self.__database[request])
+		else:
+			answer = request + " is not connected"
+		try:
+			message = answer.encode()
+			totalsent = 0
+			while totalsent < len(message):
+				sent = self.__s.send(message[totalsent:])
+				totalsent += sent
+		except OSError:
+			print('Erreur lors de la reception du message.')
+			traceback.print_exc(file=sys.stdout)
+		
 class ChatClient():
 	def __init__(self, host=socket.gethostname(), port=5001):
 		self.__name=host
@@ -91,7 +111,7 @@ class ChatClient():
 		else:
 			self.__s = socket.socket(type=socket.SOCK_DGRAM)
 			self.__s.settimeout(4)
-		#self.__s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		#self.__s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)#soi disant pour reutiliser un port, ne fonctionne pas comme je l'ai compris
 		self.__s.bind((host,port))
 		addrinfoListOfTuples = socket.getaddrinfo(host, port)
 		ipAddress=''
@@ -112,17 +132,18 @@ class ChatClient():
 		}
 		self.__running = True
 		self.__address = None
-		#threading.Thread(target=self._receive).start()
+		#threading.Thread(target=self._receive).start()#le thread s'arrete quelque part lors de l'execution si pas mis dans la boucle
 		while self.__running:
 			threading.Thread(target=self._receive).start()
 			line = sys.stdin.readline().rstrip() + ' '
 			command = line[:line.index(' ')]
 			param = line[line.index(' ')+1:].rstrip()
 			if command in handlers:
-				#try:
-				handlers[command]() if param == '' else handlers[command](param)
-				#except:
-				#	print("Erreur lors de l'execution de la comande.")
+				try:
+					handlers[command]() if param == '' else handlers[command](param)
+				except:
+					print("Erreur lors de l'execution de la commande.")
+					traceback.print_exc(file=sys.stdout)
 			else:
 				print('Commande inconnue:', command)
 	
@@ -130,13 +151,14 @@ class ChatClient():
 		try:
 			isAServer = True
 			self._join(param, isAServer)
-			self._send(str(self.getInfo), isAServer)
+			self._send(self.__name, isAServer)
 			self.__s.shutdown(socket.SHUT_RDWR)
 			self.__port += 100
 			print(self.getInfo)
 			self.socketizer()
 		except BrokenPipeError:
 			print("Vous etes deja enregistre sur ce serveur")
+			traceback.print_exc(file=sys.stdout)
 		
 	def _exit(self):
 		self.__running = False
@@ -163,20 +185,22 @@ class ChatClient():
 					self._join(param, isAServer)
 				else:
 					print("Erreur lors de la connexion")
+					traceback.print_exc(file=sys.stdout)
 				
 	def _send(self, param, isAServer=False):
 		if self.__address is not None:
-			#try:
-			message = param.encode()
-			totalsent = 0
-			while totalsent < len(message):
-				if isAServer:
-					sent = self.__s.send(message[totalsent:])
-				else:
-					sent = self.__s.sendto(message[totalsent:], self.__address)
-				totalsent += sent
-			#except OSError:
-			#	print('Erreur lors de la reception du message.')
+			try:
+				message = param.encode()
+				totalsent = 0
+				while totalsent < len(message):
+					if isAServer:
+						sent = self.__s.send(message[totalsent:])
+					else:
+						sent = self.__s.sendto(message[totalsent:], self.__address)
+					totalsent += sent
+			except OSError:
+				print('Erreur lors de la reception du message.')
+				traceback.print_exc(file=sys.stdout)
 				
 	def _receive(self):
 		while self.__running:
