@@ -29,7 +29,7 @@ Utilisation
 		/joinServer xxx.xxx.xxx.xxx 5000
 		
 		ou xxx.xxx.xxx.xxx est l'adresse IP sur laquelle est connecte le serveur
-		vous peuvez la trouver sur la deuxieme ligne de la console de commande qui 
+		vous pouvez la trouver sur la deuxieme ligne de la console de commande qui 
 		represente celui-ci (premiere application lancee : Server on ...)
 
 	2-) Requete des noms des utilisateurs connectes au serveur : 
@@ -71,7 +71,7 @@ Protocole de communication
 	[str] a un autre client
 	Serveur => Client : le serveur peut envoyer tout type de donnees convertibles 
 	en [str] au client
-	Client => Serveur : le client peut envoyer 2 formats de [str] au serveur, que
+	Client => Serveur : le client peut envoyer 3 formats de [str] au serveur, que
 	celui-ci va pouvoir interpreter : 
 	1-) "hostname|_|port" sans aucun espace indique que "hostname" veut se 
 		connecter au serveur et que son port alloue a la communication 
@@ -90,10 +90,10 @@ Protocole de communication
 	"command" l'utilisateur peut donc envoyer ce qu'il veut pour cet argument, 
 	l'important est que les deux arguments soient separes par un espace
 	
-	Les connexion client/client se font par le protocole UDP, en utilisant
+	les connexions client/client se font par le protocole UDP, en utilisant
 	des socket datagram et des sequences de caracteres (encodage/decodage)
 	
-	les connexion client/serveur se font par le protocole TCP, en utilisant
+	les connexions client/serveur se font par le protocole TCP, en utilisant
 	des socket stream et des sequences de caracteres (encodage/decodage)
 		
 	
