@@ -30,19 +30,23 @@ class EchoServerPlus():
 		self.__running = True
 		self.__s.listen(5)
 		while self.__running:
-			client, address = self.__s.accept()
-			message = self._receive(client).decode()
-			line = message.rstrip() + ' '
-			command = line[:line.index(' ')]
-			param = line[line.index(' ')+1:].rstrip()
-			if param == '':
-				self._register(address, command)
-				print(str(self.__database))
-			else:
-				print(message+" from : "+str(address))
-				self._answer(client, address, param)
-				client.shutdown(socket.SHUT_RDWR)
-			client.close()
+			try:
+				client, address = self.__s.accept()
+				message = self._receive(client).decode()
+				line = message.rstrip() + ' '
+				command = line[:line.index(' ')]
+				param = line[line.index(' ')+1:].rstrip()
+				if param == '':
+					self._register(address, command)
+					print(str(self.__database))
+				else:
+					print(message+" from : "+str(address))
+					self._answer(client, address, param)
+					client.shutdown(socket.SHUT_RDWR)
+				client.close()
+			except OSError:
+				print("Erreur lors de la reception des donnees client")
+				traceback.print_exc(file=sys.stdout)
 	
 	def _register(self, address, info):
 		try:
@@ -54,8 +58,10 @@ class EchoServerPlus():
 			added = False
 			if clientName in self.__database:
 				for i in range(len(self.__database[clientName])):
-					if self.__database[clientName][i][1]==clientPort:
-					#if self.__database[clientName][i][0]==clientIpAddress:
+					#condition pour faire joujou tout seul sur son ordi :
+					if self.__database[clientName][i][1]==clientPort:#test port (n'accepte pas 2 IP pour le meme port (non ça ne sert a rien))
+					#condition pour faire joujou avec plusieurs ordis ou cartes reseau :
+					#if self.__database[clientName][i][0]==clientIpAddress:#test ip (n'accepte pas 2 ports pour la meme IP)
 						self.__database[clientName][i] = (clientIpAddress, clientPort)
 						added = True
 				if not added:
@@ -63,9 +69,23 @@ class EchoServerPlus():
 			else:
 				self.__database[clientName] = [(clientIpAddress, clientPort)]
 			print(clientName+" s'est connecte au serveur")
-		except OSError:
-			print("Erreur lors de la reception des donnees client")
-			traceback.print_exc(file=sys.stdout)
+		except ValueError:
+			try:
+				name = info[:info.index('|-|')]
+				port = int(info[info.index('|-|')+3:].rstrip())
+				clientName = name
+				clientIpAddress = address[0]
+				clientPort = port
+				added = False
+				if clientName in self.__database:
+					for i in range(len(self.__database[clientName])):
+						if self.__database[clientName][i][1]==clientPort and self.__database[clientName][i][0]==clientIpAddress:
+							self.__database[clientName].pop(i)
+							if self.__database[clientName]==[]:
+								self.__database.pop(clientName)
+				print(clientName+" s'est deconnecte du serveur")
+			except:
+				print("Arguments non valides")
 			
 	def _receive(self, client):
 		chunks = []
@@ -77,11 +97,16 @@ class EchoServerPlus():
 		return b''.join(chunks)
 			
 	def _answer(self, client, address, request):
-		if request in self.__database:
+		if request=='.*':
+			everyone=[]
+			for name in self.__database:
+				everyone.append(name)
+			answer = '\r\n'.join(everyone)
+			answer = "utilisateurs connectes : \r\n" + answer
+		elif request in self.__database:
 			answer = request + " est connecte via : " + str(self.__database[request])
 		else:
 			answer = request + " n'est pas connecte"
-		#answer+='\r\n'
 		try:
 			message = answer.encode()
 			totalsent = 0
@@ -189,12 +214,30 @@ class ChatClient():
 	
 	def _exit(self):
 		self.__running = False
-		self.__address = None
-		self.__serverAddress = None
-		self.__ss.close()
-		self.__Sc.close()
-	
+		self._quit()
+		try:
+			self.__ss.close()
+		except:
+			pass
+		try:
+			self.__sc.close()
+		except:
+			pass
+			
 	def _quit(self):
+		try:
+			isAServer = True
+			self.socketizer(isAServer)
+			self._join(self.__serverAddress, isAServer)
+			self._send(self.__name+'|-|'+str(self.__scPort), isAServer)
+			self.__ss.shutdown(socket.SHUT_RDWR)
+			self.__ss.close()
+			print("Vous etes deconnecte du serveur")
+		except:
+			self.__ss.close()
+			print("La deconnection a echoue")
+			traceback.print_exc(file=sys.stdout)
+			
 		self.__address = None
 		self.__serverAddress = None
 		
