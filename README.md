@@ -1,5 +1,6 @@
 # projectChat
-# author: Damien Abeloos
+# authors:	Damien Abeloos
+# 			Isaac Djoko
 
 Cette application permet de chatter avec plusieurs utilisateurs connectes sur
 un serveur lui aussi initialise par celle-ci.
