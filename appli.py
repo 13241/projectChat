@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # appli.py
-# author: Damien Abeloos
+# authors:	Damien Abeloos,
+#			Isaac Djoko
 
 import socket
 import sys
