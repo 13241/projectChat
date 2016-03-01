@@ -41,15 +41,16 @@ class EchoServerPlus():
 			else:
 				print(message+" from : "+str(address))
 				self._answer(client, address, param)
-				client.shutdown(socket.SHUT_WR)
+				client.shutdown(socket.SHUT_RDWR)
 			client.close()
 	
-	def _register(self, address, name):
+	def _register(self, address, info):
 		try:
+			name = info[:info.index('|_|')]
+			port = int(info[info.index('|_|')+3:].rstrip())
 			clientName = name
 			clientIpAddress = address[0]
-			clientPort = address[1]
-			clientPort+=100
+			clientPort = port
 			added = False
 			if clientName in self.__database:
 				for i in range(len(self.__database[clientName])):
@@ -80,6 +81,7 @@ class EchoServerPlus():
 			answer = request + " est connecte via : " + str(self.__database[request])
 		else:
 			answer = request + " n'est pas connecte"
+		#answer+='\r\n'
 		try:
 			message = answer.encode()
 			totalsent = 0
@@ -93,29 +95,38 @@ class EchoServerPlus():
 class ChatClient():
 	def __init__(self, host=socket.gethostname(), port=5001):
 		self.__name=host
-		self.__port=port
-		self.__maxPortRange= port + 99
+		self.__scPort=port
+		self.__ssPort=port+100
+		self.__maxPortRange= port + 998
 		self.__serverAddress = None
+		self.__flagMessage=False
 		isAServerSocket=True
 		self.socketizer(isAServerSocket)
+		self.socketizer()
 		print('Utilisateur {} : Port {}'.format(host, port))
 		print(self.getInfo)
 		
 	def socketizer(self, isAServerSocket=False):
 		try:
-			self.__s.close()
+			if isAServerSocket:
+				self.__ss.close()
+			else:
+				self.__sc.close()
 		except AttributeError:
 			pass
 		self.__address = None
 		host = self.__name
-		port = self.__port
 		if isAServerSocket:
-			self.__s = socket.socket()
+			self.__ss = socket.socket()
+			port = self.__ssPort
+			self.__ss.bind((host,port))
+			#self.__ss.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)#soi disant pour reutiliser un port, ne fonctionne pas comme je l'ai compris
 		else:
-			self.__s = socket.socket(type=socket.SOCK_DGRAM)
-			self.__s.settimeout(4)
-		#self.__s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)#soi disant pour reutiliser un port, ne fonctionne pas comme je l'ai compris
-		self.__s.bind((host,port))
+			self.__sc = socket.socket(type=socket.SOCK_DGRAM)
+			port = self.__scPort
+			self.__sc.settimeout(4)
+			self.__sc.bind((host,port))
+			#self.__sc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)#soi disant pour reutiliser un port, ne fonctionne pas comme je l'ai compris
 		addrinfoListOfTuples = socket.getaddrinfo(host, port)
 		ipAddress=''
 		for addrinfoTuple in addrinfoListOfTuples:
@@ -154,59 +165,58 @@ class ChatClient():
 	def _joinServer(self, param):
 		try:
 			isAServer = True
+			self.socketizer(isAServer)
 			self._join(param, isAServer)
-			self._send(self.__name, isAServer)
-			self.__s.shutdown(socket.SHUT_RDWR)
-			self.__port += 100
+			self._send(self.__name+'|_|'+str(self.__scPort), isAServer)
+			self.__ss.shutdown(socket.SHUT_RDWR)
+			self.__ss.close()
 			print(self.getInfo)
-			self.socketizer()
-		except BrokenPipeError:
-			print("Vous etes deja enregistre sur ce serveur")
-			traceback.print_exc(file=sys.stdout)
+		except:
+			self.__ss.close()
 		
 	def _askServer(self, param):
-		if self.__serverAddress is not None:
-			isAServer = True
-			self._join(self.__serverAddress, isAServer)
-			self._send("askFor "+param, isAServer)
-			self.__s.shutdown(socket.SHUT_WR)
-			threading.Thread(target=self._receive).start()
-			self.__s.close()
-			#self.__port+= 100
-			#print(self.getInfo)
-			#self.socketizer()
-		else:
-			print("Vous n'avez acces a aucun serveur")
+		try:
+			if self.__serverAddress is not None:
+				isAServer = True
+				self.socketizer(isAServer)
+				self._join(self.__serverAddress, isAServer)
+				self._send("askFor "+param, isAServer)
+				self.__ss.shutdown(socket.SHUT_WR)
+			else:
+				print("Vous n'avez acces a aucun serveur")
+		except:
+			self.__ss.close()
 	
 	def _exit(self):
 		self.__running = False
 		self.__address = None
 		self.__serverAddress = None
-		self.__s.close()
+		self.__ss.close()
+		self.__Sc.close()
 	
 	def _quit(self):
 		self.__address = None
 		self.__serverAddress = None
 		
 	def _join(self, param, isAServer=False):
-		if not isinstance(isAServer, bool):
-			isAServer = False
-		self.socketizer(isAServer)
 		tokens = param.split(' ')
 		if len(tokens) == 2:
 			try:
 				self.__address = (socket.gethostbyname(tokens[0]), int(tokens[1]))
 				if isAServer:
-					self.__s.connect(self.__address)
+					self.__ss.connect(self.__address)
 					self.__serverAddress = param
 				print('Connecte a {}:{}'.format(*self.__address))
 			except OSError as err:
-				if err.errno==10048 and self.__port < self.__maxPortRange:
-					self.__port+=1
+				if not isinstance(isAServer, bool):
+						isAServer = False
+				if err.errno==10048 and self.__ssPort < self.__maxPortRange and isAServer:
+					self.__ssPort+=1
+					self.socketizer(isAServer)
 					self._join(param, isAServer)
 				else:
-					print("Erreur lors de la connexion")
-					traceback.print_exc(file=sys.stdout)
+					print("Erreur lors de la connexion, reessayez plus tard")
+					self.__ssPort=self.__maxPortRange-998
 				
 	def _send(self, param, isAServer=False):
 		if self.__address is not None:
@@ -215,27 +225,39 @@ class ChatClient():
 				totalsent = 0
 				while totalsent < len(message):
 					if isAServer:
-						sent = self.__s.send(message[totalsent:])
+						sent = self.__ss.send(message[totalsent:])
 					else:
-						sent = self.__s.sendto(message[totalsent:], self.__address)
+						sent = self.__sc.sendto(message[totalsent:], self.__address)
 					totalsent += sent
 			except OSError:
-				print('Erreur lors de la reception du message.')
-				traceback.print_exc(file=sys.stdout)
+				print("Erreur lors de l'envoi du message.")
 				
 	def _receive(self):
 		while self.__running:
 			try:
-				data, address = self.__s.recvfrom(1024)
-				print(data.decode())
+				data, address = self.__ss.recvfrom(1024)
+				message = data.decode()
+				if message!='':
+					self.__flagMessage = True
+					print(message)
+				else:
+					if self.__flagMessage:
+						self.__flagMessage = False
+						self.__ss.close()
 			except socket.timeout:
 				pass
 			except OSError:
-				return
+				try:
+					data, address = self.__sc.recvfrom(1024)
+					print(data.decode())
+				except socket.timeout:
+					pass
+				except OSError:
+					return
 	
 	@property
 	def getInfo(self):
-		return (self.__name, self.__ipAddress, self.__port)
+		return (self.__name, self.__ipAddress, self.__scPort, self.__ssPort)
 			
 	def _getInfo(self):
 		print(self.getInfo)
